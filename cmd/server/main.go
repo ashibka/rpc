@@ -4,20 +4,25 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"net"
+	"rpc/internal/config"
 	"rpc/internal/server"
 	"rpc/pkg/api/test"
 )
 
 func main() {
-	serv := grpc.NewServer()
-	orderServer := server.NewServer()
-	test.RegisterOrderServiceServer(serv, orderServer)
-	l, err := net.Listen("tcp", ":50051")
+	cfg, err := config.ParseConfig(".env")
 	if err != nil {
-		log.Fatalf("failed to listen on %v:%v\n", l.Addr(), err)
+		log.Fatalf("Failed to load config: %v", err)
 	}
-	log.Printf("Trying to start grpc order server on %v\n", l.Addr())
-	if err := serv.Serve(l); err != nil {
+	grpcserver := grpc.NewServer()
+	orderServer := server.NewServer()
+	test.RegisterOrderServiceServer(grpcserver, orderServer)
+	listener, err := net.Listen("tcp", cfg.Port)
+	if err != nil {
+		log.Fatalf("failed to listen on %v:%v\n", listener.Addr(), err)
+	}
+	log.Printf("Trying to start grpc order server on %v\n", listener.Addr())
+	if err := grpcserver.Serve(listener); err != nil {
 		log.Fatalf("Failed to serve: %v", err)
 	}
 }
