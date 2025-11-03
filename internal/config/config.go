@@ -7,9 +7,11 @@ import (
 )
 
 type Config struct {
-	Port     int           `env:"GRPC_PORT" env-default:"50051"`
-	LogLevel string        `env:"LOG_LEVEL" env-default:"info"`
-	Timeout  time.Duration `env:"HTTP_TIMEOUT" env-default:"30s"`
+	Port            int           `env:"GRPC_PORT" env-default:"50051"`
+	LogLevel        string        `env:"LOG_LEVEL" env-default:"info"`
+	Timeout         time.Duration `env:"HTTP_TIMEOUT" env-default:"30s"`
+	GwPort          int           `env:"GRPC_GATEWAY_PORT" env-default:"8080"`
+	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" env-default:"30s"`
 }
 
 func ParseConfig(path string) (*Config, error) {

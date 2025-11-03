@@ -1,6 +1,9 @@
 # Variables
 PROJECT_NAME=order-service
 GRPC_PORT=50051
+PROTO_PATH=api
+GEN_PATH=pkg/api/test
+GOOGLEAPIS_PATH=third_party/googleapis
 
 .PHONY: all build run clean gen test
 
@@ -9,7 +12,11 @@ all: build
 
 # Generate gRPC code
 gen:
-	protoc --go_out=. --go-grpc_out=. pkg/api/test/order.proto
+	protoc -I. -I$(GOOGLEAPIS_PATH) \
+    		--go_out=. \
+    		--go-grpc_out=. \
+    		--grpc-gateway_out=. \
+    		$(PROTO_PATH)/order.proto
 
 # Build binary
 build:
@@ -21,7 +28,7 @@ run:
 
 # Clean build artifacts
 clean:
-	rm -rf bin/
+	rm -rf bin/ $(GEN_PATH)/*.pb.go $(GEN_PATH)/*.gw.go
 
 # Test with grpcurl
 test:
@@ -32,6 +39,7 @@ deps:
 	go mod download
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
 	go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 
 # Development setup
