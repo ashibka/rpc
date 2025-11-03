@@ -84,6 +84,9 @@ func main() {
 	<-shdCh
 	logger.Info("Gf shutdown started")
 
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer shutdownCancel()
+
 	cancel()
 
 	grpcStopped := make(chan struct{})
@@ -95,8 +98,8 @@ func main() {
 	select {
 	case <-grpcStopped:
 		logger.Info("gRPC server stopped")
-	case <-ctx.Done():
-		logger.Warn("gRPC forced shutdown")
+	case <-shutdownCtx.Done():
+		logger.Warn("gRPC forced shutdown: timeout exceeded")
 		grpcserver.Stop()
 	}
 
