@@ -5,19 +5,18 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"rpc/internal/repository"
 	"rpc/pkg/api/test"
-	"sync"
 )
 
 type Serv struct {
 	test.UnimplementedOrderServiceServer
-	orders map[string]*test.Order
-	mu     sync.RWMutex
+	repo repository.OrderRepository
 }
 
-func NewServer() *Serv {
+func NewServer(repo repository.OrderRepository) *Serv {
 	return &Serv{
-		orders: make(map[string]*test.Order),
+		repo: repo,
 	}
 }
 
@@ -26,8 +25,6 @@ func (s *Serv) idgen() string {
 }
 
 func (s *Serv) CreateOrder(ctx context.Context, req *test.CreateOrderRequest) (*test.CreateOrderResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	id := s.idgen()
 
@@ -37,7 +34,10 @@ func (s *Serv) CreateOrder(ctx context.Context, req *test.CreateOrderRequest) (*
 		Quantity: req.Quantity,
 	}
 
-	s.orders[id] = order
+	err := s.repo.Create(ctx, order)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create order: %v", err)
+	}
 
 	return &test.CreateOrderResponse{
 		Id: order.Id,
@@ -45,12 +45,14 @@ func (s *Serv) CreateOrder(ctx context.Context, req *test.CreateOrderRequest) (*
 }
 
 func (s *Serv) GetOrder(ctx context.Context, req *test.GetOrderRequest) (*test.GetOrderResponse, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	order, ex := s.orders[req.Id]
 
-	if !ex {
-		return nil, status.Errorf(codes.NotFound, "Error! Can not get information about order with id %s, cause it does not exists", req.Id)
+	order, err := s.repo.Get(ctx, req.Id)
+
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, status.Errorf(codes.NotFound, "order with id %s not found", req.Id)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to get order: %v", err)
 	}
 	return &test.GetOrderResponse{
 		Order: order,
@@ -59,36 +61,41 @@ func (s *Serv) GetOrder(ctx context.Context, req *test.GetOrderRequest) (*test.G
 }
 
 func (s *Serv) UpdateOrder(ctx context.Context, req *test.UpdateOrderRequest) (*test.UpdateOrderResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	order, ex := s.orders[req.Id]
-	if !ex {
-		return nil, status.Errorf(codes.NotFound, "Error! Can not update order with id %s, cause it does not exists", req.Id)
+	order := &test.Order{
+		Id:       req.Id,
+		Item:     req.Item,
+		Quantity: req.Quantity,
 	}
-	order.Item = req.Item
-	order.Quantity = req.Quantity
+	err := s.repo.Update(ctx, order)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, status.Errorf(codes.NotFound, "order with id %s not found", req.Id)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to update order: %v", err)
+	}
+
 	return &test.UpdateOrderResponse{
 		Order: order,
 	}, nil
 }
 
 func (s *Serv) DeleteOrder(ctx context.Context, req *test.DeleteOrderRequest) (*test.DeleteOrderResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, ex := s.orders[req.Id]
-	if !ex {
-		return nil, status.Errorf(codes.NotFound, "Error! Can not delete order with id %s, cause it does not exists", req.Id)
+
+	err := s.repo.Delete(ctx, req.Id)
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, status.Errorf(codes.NotFound, "order with id %s not found", req.Id)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to delete order: %v", err)
 	}
-	delete(s.orders, req.Id)
 	return &test.DeleteOrderResponse{Success: true}, nil
 }
 
 func (s *Serv) ListOrders(ctx context.Context, req *test.ListOrdersRequest) (*test.ListOrdersResponse, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	orders := make([]*test.Order, 0, len(s.orders))
-	for _, order := range s.orders {
-		orders = append(orders, order)
+
+	orders, err := s.repo.List(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to list orders: %v", err)
 	}
 	return &test.ListOrdersResponse{
 		Orders: orders,

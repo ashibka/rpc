@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"github.com/ilyakaznacheev/cleanenv"
+	"rpc/internal/repository/postgres"
 	"time"
 )
 
@@ -12,6 +13,8 @@ type Config struct {
 	Timeout         time.Duration `env:"HTTP_TIMEOUT" env-default:"30s"`
 	GwPort          int           `env:"GRPC_GATEWAY_PORT" env-default:"8080"`
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" env-default:"30s"`
+
+	postgres.Config
 }
 
 func ParseConfig(path string) (*Config, error) {

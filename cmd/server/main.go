@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -12,11 +14,13 @@ import (
 	"rpc/internal/config"
 	"rpc/internal/gateway"
 	"rpc/internal/interceptor"
+	"rpc/internal/repository/postgres"
 	"rpc/internal/server"
 	"rpc/pkg/api/test"
 	"strconv"
 	"sync"
 	"syscall"
+	"time"
 )
 
 func main() {
@@ -46,8 +50,26 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	db, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%v:%v@%v:%v/%v?sslmode=disable",
+		cfg.DbUser, cfg.DbPass, cfg.DbHost, cfg.DbPort, cfg.DbName))
+	if err != nil {
+		log.Fatalf("Unable to connect to database: %v", err)
+	}
+	defer db.Close()
+
+	ctxTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := db.Ping(ctxTimeout); err != nil {
+		log.Fatalf("Database ping failed: %v", err)
+	}
+
+	fmt.Println("Successfully connected to PostgreSQL")
+
+	orderRepo := postgres.NewOrderRepository(db)
+
 	grpcserver := grpc.NewServer(grpc.UnaryInterceptor(interceptor.ZapLog(logger)))
-	orderServer := server.NewServer()
+	orderServer := server.NewServer(orderRepo)
 	reflection.Register(grpcserver)
 	test.RegisterOrderServiceServer(grpcserver, orderServer)
 
