@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v5/pgxpool"
+	redislib "github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -14,7 +15,9 @@ import (
 	"rpc/internal/config"
 	"rpc/internal/gateway"
 	"rpc/internal/interceptor"
+	"rpc/internal/repository/cached"
 	"rpc/internal/repository/postgres"
+	redisrepo "rpc/internal/repository/redis"
 	"rpc/internal/server"
 	"rpc/pkg/api/test"
 	"strconv"
@@ -64,12 +67,25 @@ func main() {
 		log.Fatalf("Database ping failed: %v", err)
 	}
 
-	fmt.Println("Successfully connected to PostgreSQL")
+	fmt.Println("Postgres connected sucssefully")
+
+	redisClient := redislib.NewClient(&redislib.Options{
+		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
+		Password: cfg.RedisPassword,
+		DB:       0,
+	})
+	defer redisClient.Close()
+
+	if err := redisClient.Ping(ctxTimeout).Err(); err != nil {
+		log.Fatalf("Redis ping failed: %v", err)
+	}
 
 	orderRepo := postgres.NewOrderRepository(db)
+	redisRepo := redisrepo.NewOrderRepository(redisClient)
+	cachedRepo := cached.NewCachedRepository(redisRepo, orderRepo)
 
 	grpcserver := grpc.NewServer(grpc.UnaryInterceptor(interceptor.ZapLog(logger)))
-	orderServer := server.NewServer(orderRepo)
+	orderServer := server.NewServer(cachedRepo)
 	reflection.Register(grpcserver)
 	test.RegisterOrderServiceServer(grpcserver, orderServer)
 
@@ -81,7 +97,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		listener, err := net.Listen("tcp", ":"+strconv.Itoa(cfg.Port))
+		listener, err := net.Listen("tcp", "0.0.0.0:"+strconv.Itoa(cfg.Port))
 		if err != nil {
 			logger.Fatal("failed to listen on grpc port", zap.Error(err))
 		}
@@ -96,7 +112,7 @@ func main() {
 		defer wg.Done()
 
 		logger.Info("HTTP gateway starting", zap.String("port", strconv.Itoa(cfg.GwPort)))
-		if err := gateway.StartGateway(ctx, ":"+strconv.Itoa(cfg.Port), ":"+strconv.Itoa(cfg.GwPort), logger); err != nil {
+		if err := gateway.StartGateway(ctx, "0.0.0.0:"+strconv.Itoa(cfg.Port), "0.0.0.0:"+strconv.Itoa(cfg.GwPort), logger); err != nil {
 			logger.Info("Failed to start gateway", zap.Error(err))
 		}
 	}()

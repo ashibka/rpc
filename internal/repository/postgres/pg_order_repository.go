@@ -12,15 +12,6 @@ import (
 	"rpc/pkg/api/test"
 )
 
-type Config struct {
-	DbName          string `env:"POSTGRES_DB" env-default:"postgres"`
-	DbUser          string `env:"POSTGRES_USER" env-default:"postgres"`
-	DbPass          string `env:"POSTGRES_PASSWORD" env-default:"postgres"`
-	DbHost          string `env:"POSTGRES_HOST" env-default:"db"`
-	DbPort          int    `env:"POSTGRES_PORT" env-default:"5432"`
-	PostgresVersion string `env:"POSTGRES_VERSION" env-default:"15"`
-}
-
 type orderRepository struct {
 	db      *pgxpool.Pool
 	builder squirrel.StatementBuilderType
